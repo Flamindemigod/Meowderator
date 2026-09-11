@@ -91,6 +91,7 @@ async def temprl(
                 send_polls=True,
                 pin_messages=True,
                 bypass_slowmode=True,
+                mention_everyone=True,
             ),
             reason=f"/temprl used by {inter.author}",
         )
