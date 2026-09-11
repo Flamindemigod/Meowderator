@@ -54,6 +54,7 @@ async def remove_temprl_role(
     name="temprl",
     description="Give a user temporary moderation access in this channel",
 )
+@commands.has_role("Admin")
 async def temprl(
     inter: disnake.ApplicationCommandInteraction,
     user: disnake.Member = commands.Param(
