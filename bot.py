@@ -86,6 +86,7 @@ async def temprl(
         await inter.channel.set_permissions(
             user,
             overwrite=disnake.PermissionOverwrite(
+                manage_channels=True,
                 manage_messages=True,
                 manage_permissions=True,
                 manage_threads=True,
