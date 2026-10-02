@@ -83,7 +83,7 @@ async def backup_message(message: disnake.Message):
         if not target_channel:
             target_channel = await target_guild.create_text_channel(source_channel.name, category=target_category)
         destination_channel = target_channel
-    if message.embeds[0]:
+    if message.embeds and message.embeds[0]:
         embed = message.embeds[0]
     else:
         embed = disnake.Embed(description = message.content, color=disnake.Color.blue())
