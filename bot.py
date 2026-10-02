@@ -83,8 +83,10 @@ async def backup_message(message: disnake.Message):
         if not target_channel:
             target_channel = await target_guild.create_text_channel(source_channel.name, category=target_category)
         destination_channel = target_channel
-
-    embed: disnake.Embed = disnake.Embed(description = message.content, color=disnake.Color.blue())
+    if message.embeds[0]:
+        embed = message.embeds[0]
+    else:
+        embed = disnake.Embed(description = message.content, color=disnake.Color.blue())
     embed.set_author(name=f"{message.author.display_name} «{message.author.id}»", icon_url=message.author.display_avatar.url)
     embed.set_footer(text=f"{message.id}")
     files: list[disnake.File] = [
