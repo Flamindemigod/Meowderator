@@ -4,7 +4,7 @@ import disnake
 import os
 import sqlite3
 
-ROLE_ID = 1547935758579404891
+TEMPRL_ROLE_ID = 1547935758579404891
 ESO_CONTENT = 809610729497165865
 ESO_CONTENT_BACKUP = 1360246602895200407
 
@@ -14,10 +14,10 @@ intents.message_content = True
 bot = commands.InteractionBot(intents=intents)
 
 
-db = sqlite3.connect("temprl.db")
+db = sqlite3.connect("DB.db")
 db.execute(
     """
-    CREATE TABLE IF NOT EXISTS channel_users (
+    CREATE TABLE IF NOT EXISTS temp_rl (
         channel_id INTEGER PRIMARY KEY,
         user_id INTEGER NOT NULL
     )
@@ -181,7 +181,7 @@ async def remove_temprl_role(
     reason: str,
 ):
     row = db.execute(
-        "SELECT user_id FROM channel_users WHERE channel_id = ?",
+        "SELECT user_id FROM temp_rl WHERE channel_id = ?",
         (channel.id,),
     ).fetchone()
 
@@ -189,7 +189,7 @@ async def remove_temprl_role(
         return
 
     user_id = row[0]
-    role = channel.guild.get_role(ROLE_ID)
+    role = channel.guild.get_role(TEMPRL_ROLE_ID)
 
     if role is not None:
         try:
@@ -201,7 +201,7 @@ async def remove_temprl_role(
             print("Could not remove the role. Check the bot's permissions.")
 
     db.execute(
-        "DELETE FROM channel_users WHERE channel_id = ?",
+        "DELETE FROM temp_rl WHERE channel_id = ?",
         (channel.id,),
     )
     db.commit()
@@ -224,7 +224,7 @@ async def temprl(
         )
         return
 
-    role = inter.guild.get_role(ROLE_ID)
+    role = inter.guild.get_role(TEMPRL_ROLE_ID)
 
     if role is None:
         await inter.response.send_message(
@@ -256,7 +256,7 @@ async def temprl(
 
         db.execute(
             """
-            INSERT INTO channel_users (channel_id, user_id)
+            INSERT INTO temp_rl (channel_id, user_id)
             VALUES (?, ?)
             ON CONFLICT(channel_id)
             DO UPDATE SET user_id = excluded.user_id
