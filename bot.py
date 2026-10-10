@@ -1,4 +1,5 @@
-from disnake.ext import commands
+from datetime import datetime, time, timedelta
+from disnake.ext import commands, tasks
 from typing import Optional
 import disnake
 import os
@@ -7,9 +8,14 @@ import sqlite3
 TEMPRL_ROLE_ID = 1547935758579404891
 ESO_CONTENT = 809610729497165865
 ESO_CONTENT_BACKUP = 1360246602895200407
-
+MAX_LATE = 3
+LATE_ROLE_ID = 1237336118761095200
+LATE_TIMEOUT = "+7 days"
+SERIALLATE_ROLE_ID = 1340007892362989658
+SERIALLATE_TIMEOUT = "+1 month"
 intents = disnake.Intents.default()
 intents.message_content = True
+intents.members = True
 
 bot = commands.InteractionBot(intents=intents)
 
@@ -23,7 +29,125 @@ db.execute(
     )
     """
 )
+db.execute(
+    """
+    CREATE TABLE IF NOT EXISTS late(
+        idx INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        by_id INTERGER NOT NULL,
+        by_name TEXT NOT NULL,
+        channel_id INTEGER NOT NULL,
+        channel_name TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        expiresAt DATETIME NOT NULL DEFAULT (datetime('now', '+7 days')),
+        timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """
+)
 db.commit()
+
+@bot.slash_command(
+    name="late",
+    description="Give a user temporary late role",
+)
+@commands.has_role("Admin")
+async def applyLateRole(
+    inter: disnake.ApplicationCommandInteraction,
+    user: disnake.Member = commands.Param(
+        description="The user to mark"
+        ), reason: str = commands.Param(description="Reason for the tag", default="No show")):
+    print("Late")
+    #Check if user has previous late tags in the past 30 days
+    row = db.execute("SELECT count(*) FROM late WHERE timestamp >= datetime('now', '-1 month')").fetchone()
+    if row is None:
+        return
+
+    count = row[0]
+
+    if (count >= MAX_LATE):
+        role = inter.guild.get_role(SERIALLATE_ROLE_ID)
+        timeout = SERIALLATE_TIMEOUT
+    else:
+        role = inter.guild.get_role(LATE_ROLE_ID)
+        timeout = LATE_TIMEOUT
+    if role is None:
+        await inter.response.send_message(
+            "The configured role does not exist in this server.",
+            ephemeral=True,
+        )
+        return
+
+    await user.add_roles(
+        role,
+        reason=f"/late used by {inter.author}",
+    )
+
+    db.execute(
+        """
+        INSERT INTO late(user_id, by_id, by_name, channel_id, channel_name, reason, tag, expiresAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', ?))
+        """,
+        (user.id, inter.author.id, inter.author.name, inter.channel.id, inter.channel.name, reason, role.name, timeout),
+    )
+    db.commit()
+
+    await inter.response.send_message(
+        f"Applied {role.mention} to {user.mention} for {reason}",
+        ephemeral=True,
+    )
+
+def seconds_until(target: time) -> float:
+    now = datetime.datetime.now(datetime.UTC)
+    today_target = datetime.combine(now.date(), target)
+    # If today's target already passed, schedule for tomorrow
+    if now >= today_target:
+        today_target += timedelta(days=1)
+    return (today_target - now).total_seconds()
+
+async def remove_all_role_members(role_id: int):
+    guild = bot.get_guild(ESO_CONTENT)
+    if guild is None:
+        return
+    role = guild.get_role(role_id)
+    if role is None:
+        return
+    for member in role.members:
+        await member.remove_roles(role)
+
+async def reapply_late_role():
+    guild = bot.get_guild(ESO_CONTENT)
+    if guild is None:
+        return
+    late_role = guild.get_role(LATE_ROLE_ID)
+    if late_role is None:
+        return
+    seriallate_role = guild.get_role(SERIALLATE_ROLE_ID)
+    if seriallate_role is None:
+        return
+    rows = db.execute("SELECT user_id, tag FROM late WHERE datetime(expiresAt) > datetime('now')").fetchall()
+    for row in rows:
+        if row[1] == late_role.name:
+            role = late_role
+        elif row[1] == seriallate_role.name:
+            role = seriallate_role
+        else:
+            continue
+        member = guild.get_member(row[0])
+        if member is not None:
+            await member.add_roles(role);
+
+@tasks.loop(hours=24)
+async def daily_tasks():
+    print("Runnning daily tasks")
+    await remove_all_role_members(LATE_ROLE_ID)
+    await remove_all_role_members(SERIALLATE_ROLE_ID)
+    await reapply_late_role();
+
+@daily_tasks.before_loop
+async def wait_until_target():
+    wait_seconds = seconds_until(time(hour=4, minute=00))
+    await disnake.utils.sleep_until(datetime.datetime.now(datetime.UTC) + timedelta(seconds=wait_seconds))
 
 async def backup_message(message: disnake.Message):
     source_channel = message.channel
@@ -299,6 +423,9 @@ async def on_guild_channel_delete(
 
 @bot.event
 async def on_ready():
+    await daily_tasks()
+    if not daily_tasks.is_running():
+        daily_tasks.start()
     print(f"Logged in as {bot.user}")
 
 bot.run(os.environ["DISCORD_TOKEN"])
